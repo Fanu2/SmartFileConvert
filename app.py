@@ -30,16 +30,24 @@ def pdf_to_text(file):
             out.write(page.extract_text() + "\n")
     return output_path
 
+from fpdf import FPDF
+from PIL import Image
+
 def images_to_pdf(files):
-    image_list = []
+    pdf = FPDF()
+    pdf.set_auto_page_break(0)
+
     for file in files:
-        img = Image.open(file)
-        img = img.convert("RGB")
-        image_list.append(img)
+        image = Image.open(file)
+        temp_path = f"temp_{file.name}"
+        image.save(temp_path)
+        pdf.add_page()
+        pdf.image(temp_path, x=10, y=10, w=190)
+
     output_path = "output.pdf"
-    if image_list:
-        image_list[0].save(output_path, save_all=True, append_images=image_list[1:])
+    pdf.output(output_path)
     return output_path
+
 
 def txt_to_docx(file):
     output_path = "output.docx"
