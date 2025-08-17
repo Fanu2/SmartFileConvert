@@ -4,6 +4,10 @@ import pdfplumber
 from PIL import Image
 from fpdf import FPDF
 from docx import Document
+import json
+import os
+
+# --- Conversion Functions ---
 
 def csv_to_excel(file):
     df = pd.read_csv(file)
@@ -18,36 +22,53 @@ def excel_to_csv(file):
     return output_path
 
 def json_to_csv(file):
-    df = pd.read_json(file)
     output_path = "output.csv"
-    df.to_csv(output_path, index=False)
-    return output_path
+    try:
+        data = json.load(file)
+        if isinstance(data, list):
+            df = pd.DataFrame(data)
+        elif isinstance(data, dict):
+            df = pd.json_normalize(data)
+        else:
+            raise ValueError("Unsupported JSON format")
+        df.to_csv(output_path, index=False)
+        return output_path
+    except Exception:
+        return None
 
 def pdf_to_text(file):
     output_path = "output.txt"
     with pdfplumber.open(file) as pdf, open(output_path, "w", encoding="utf-8") as out:
         for page in pdf.pages:
-            out.write(page.extract_text() + "\n")
+            text = page.extract_text()
+            if text:
+                out.write(text + "\n")
     return output_path
-
-from fpdf import FPDF
-from PIL import Image
 
 def images_to_pdf(files):
     pdf = FPDF()
     pdf.set_auto_page_break(0)
+    temp_files = []
 
     for file in files:
-        image = Image.open(file)
+        img = Image.open(file)
         temp_path = f"temp_{file.name}"
-        image.save(temp_path)
+        img = img.convert("RGB")
+        img.save(temp_path)
+        temp_files.append(temp_path)
+
         pdf.add_page()
         pdf.image(temp_path, x=10, y=10, w=190)
 
     output_path = "output.pdf"
     pdf.output(output_path)
-    return output_path
 
+    # Clean up temp files
+    for temp_file in temp_files:
+        try: os.remove(temp_file)
+        except: pass
+
+    return output_path
 
 def txt_to_docx(file):
     output_path = "output.docx"
@@ -63,6 +84,8 @@ def txt_to_html(file):
     with open(output_path, "w", encoding="utf-8") as f:
         f.write("<html><body><pre>{}</pre></body></html>".format(text))
     return output_path
+
+# --- Streamlit App ---
 
 def main():
     st.title("Master File Converter App")
@@ -80,12 +103,10 @@ def main():
         ]
     )
 
-    st.write("Upload your file(s):")
-
     if conversion_type == "Images to PDF":
-        uploaded_files = st.file_uploader("Upload multiple image files", type=["jpg", "png"], accept_multiple_files=True)
+        uploaded_files = st.file_uploader("Upload image files", type=["jpg", "png", "jpeg"], accept_multiple_files=True)
     else:
-        uploaded_file = st.file_uploader("Upload a file", type=None)
+        uploaded_file = st.file_uploader("Upload file", type=None)
 
     if st.button("Convert"):
         if conversion_type == "CSV to Excel" and uploaded_file:
@@ -98,11 +119,14 @@ def main():
 
         elif conversion_type == "JSON to CSV" and uploaded_file:
             out = json_to_csv(uploaded_file)
-            st.download_button("Download CSV File", open(out, "rb"), file_name="converted.csv")
+            if out:
+                st.download_button("Download CSV File", open(out, "rb"), file_name="converted.csv")
+            else:
+                st.error("Invalid JSON format")
 
         elif conversion_type == "PDF to Text" and uploaded_file:
             out = pdf_to_text(uploaded_file)
-            st.download_button("Download Text File", open(out, "rb"), file_name="converted.txt")
+            st.download_button("Download TXT File", open(out, "rb"), file_name="converted.txt")
 
         elif conversion_type == "Images to PDF" and uploaded_files:
             out = images_to_pdf(uploaded_files)
@@ -117,7 +141,7 @@ def main():
             st.download_button("Download HTML File", open(out, "rb"), file_name="converted.html")
 
         else:
-            st.error("Please upload a file!")
+            st.error("Please upload a file.")
 
 if __name__ == "__main__":
     main()
